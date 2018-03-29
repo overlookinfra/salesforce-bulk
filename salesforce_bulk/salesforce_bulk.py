@@ -421,25 +421,31 @@ class SalesforceBulk(object):
         else:
             return None
 
-    def is_batch_done(self, batch_id, job_id=None):
+    def is_batch_done(self, batch_id, job_id=None, pk_chunking=False):
         batch_state = self.batch_state(batch_id, job_id=job_id, reload=True)
-        if batch_state in bulk_states.ERROR_STATES:
+        if pk_chunking:
+            err = ['Failed', 'Aborted']
+        else:
+            err = bulk_states.ERROR_STATES
+        if batch_state in err:
             status = self.batch_status(batch_id, job_id)
             raise BulkBatchFailed(job_id, batch_id, status.get('stateMessage'), batch_state)
+        if pk_chunking:
+            return batch_state == 'NotProcessed'
         return batch_state == bulk_states.COMPLETED
 
     # Wait for the given batch to complete, waiting at most timeout seconds
     # (defaults to 10 minutes).
     def wait_for_batch(self, job_id, batch_id, timeout=60 * 10,
-                       sleep_interval=10):
+                       sleep_interval=10, pk_chunking=False):
         waited = 0
-        while not self.is_batch_done(batch_id, job_id) and waited < timeout:
+        while not self.is_batch_done(batch_id, job_id, pk_chunking) and waited < timeout:
             time.sleep(sleep_interval)
             waited += sleep_interval
 
-    def get_query_batch_result_ids(self, batch_id, job_id=None):
+    def get_query_batch_result_ids(self, batch_id, job_id=None, pk_chunking=False):
         job_id = job_id or self.lookup_job_id(batch_id)
-        if not self.is_batch_done(batch_id, job_id):
+        if not self.is_batch_done(batch_id, job_id, pk_chunking):
             return False
 
         uri = urlparse.urljoin(
